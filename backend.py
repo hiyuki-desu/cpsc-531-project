@@ -1,5 +1,7 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, FloatType, IntegerType, MapType
+from functools import reduce
+from pyspark.sql import DataFrame
+from pyspark.sql.functions import lit
 import json
 from openaq import OpenAQ
 import schema
@@ -42,14 +44,14 @@ def fetch_data_from_api(url, location_code):
 #Can be changed to get latest measurement
 def fetch_measurement_from_api(url, sensor_id):
     #get measurement from range
-    response = url.measurements.list(sensor_id, data='measurements', rollup='hourly', datetime_from=dateTimeFrom, 
+    response = url.measurements.list(sensor_id, data='measurements', rollup='daily', datetime_from=dateTimeFrom, 
                                     datetime_to=dateTimeTo, page=1, limit=1000)
     if hasattr(response, 'status_code'):
         raise Exception(f"Failed to fetch data: {response.status_code} - {response.text}")
     else:
         return json.loads(response.json()) #Same as Line 38
 
-# Step 3: Fetch data
+#Fetch data
 locations = [8874, 8875]
 sensor_ids = [[25902, 4272338, 25901, 4272072, 25900, 25899, 25898], 
               [25897, 4272174, 25896, 4272267]]
@@ -83,7 +85,7 @@ for sensor_group in sensor_ids:
 
 
 print(input_path)
-# Step 4: Convert to Spark DataFrame
+#Convert to Spark DataFrame
 #create empty rdd
 empty_RDD = spark.sparkContext.emptyRDD()
 location_df = spark.createDataFrame(data=empty_RDD, schema=schema.location_schema)
@@ -96,20 +98,30 @@ if raw_data:
 else:
     print("No data retrieved from API.")
 
-measurement_df = spark.createDataFrame(data=empty_RDD, schema=schema.measurement_schema)
+sensor_id_flat = []
+for sublist in sensor_ids:
+    for item in sublist:
+        sensor_id_flat.append(item) 
+
+measurement_RDD_list = []
 if measure_raw_data:
-    for rawMeasurement in measure_raw_data_list:
-        m_list = rawMeasurement.get("results", [])
+    for i in range(len(measure_raw_data_list)):
+        m_list = measure_raw_data_list[i].get("results", [])
         measurement_RDD = spark.createDataFrame(m_list, schema=schema.measurement_schema)
+        measurement_RDD2 = measurement_RDD.withColumn("sensor_id", lit(sensor_id_flat[i]))
         #measurement_RDD.show()
-        measurement_df = measurement_df.union(measurement_RDD)
+        measurement_RDD_list.append(measurement_RDD2)
 
 else:
     print("No measurement retried from API.")
 
 
 
-# Step 5: Optional - Save or process the data
+
+#combine all measurement into 1 dataframe
+measurement_df = reduce(DataFrame.unionAll, measurement_RDD_list)
+
+#output into json file
 location_df.write.json("./location_dataframe")
 measurement_df.write.json("./measurement_dataframe")
 

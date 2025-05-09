@@ -102,3 +102,4 @@ measurement_schema = StructType([
     StructField("coverage", StringType(), True),
     StructField("summary", summary_schema, True)
 ])
+
