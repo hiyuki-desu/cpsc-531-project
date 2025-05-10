@@ -1,4 +1,7 @@
-Dependencies
+Dependencies, please install the following in pip
   - pyspark
-  - java 11
   - OpenAQ
+
+Please also ensure the following version of java compiler is selected
+  - Java 11 (prefereablly openjdk-11)
+
